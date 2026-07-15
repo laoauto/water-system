@@ -131,7 +131,7 @@ function logout() {
 const ADMIN_NAV = [
   { key: 'dashboard', label: 'ພາບລວມ (Dashboard)', icon: '📊' },
   { key: 'stock', label: 'ຈັດການສະຕັອກ', icon: '📦' },
-  { key: 'sell', label: 'ຂາຍໃຫ້ຕົວແທນ', icon: '🚚' },
+  { key: 'sell', label: 'ຂາຍສິນຄ້າ', icon: '🚚' },
   { key: 'purchase_requests', label: 'ຄຳສັ່ງຊື້ / ຂໍ້ຄວາມ', icon: '📥' },
   { key: 'agents', label: 'ຈັດການຕົວແທນ', icon: '👥' },
   { key: 'prices', label: 'ຕັ້ງລາຄາ', icon: '💰' },
@@ -382,6 +382,40 @@ async function renderAdminStock(main) {
 }
 
 async function renderAdminSell(main) {
+  if (!adminState.sellSubView) adminState.sellSubView = 'agent';
+
+  main.innerHTML = `
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">ຂາຍສິນຄ້າ</h1>
+        <div class="page-subtitle">ຂາຍໃຫ້ຕົວແທນ ຫຼື ຂາຍປີກໂດຍກົງ (ໜ້າຮ້ານໂຮງງານ)</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:18px;max-width:520px;">
+      <button class="btn btn-sm ${adminState.sellSubView === 'agent' ? 'btn-primary' : 'btn-outline'}" id="tab-agent-sell-btn" style="flex:1;">🚚 ຂາຍໃຫ້ຕົວແທນ</button>
+      <button class="btn btn-sm ${adminState.sellSubView === 'retail' ? 'btn-primary' : 'btn-outline'}" id="tab-retail-sell-btn" style="flex:1;">🏬 ຂາຍປີກ (ໜ້າຮ້ານ)</button>
+    </div>
+    <div id="sell-subview-content"><div class="spinner"></div></div>
+  `;
+
+  main.querySelector('#tab-agent-sell-btn').addEventListener('click', () => {
+    adminState.sellSubView = 'agent';
+    renderAdminSell(main);
+  });
+  main.querySelector('#tab-retail-sell-btn').addEventListener('click', () => {
+    adminState.sellSubView = 'retail';
+    renderAdminSell(main);
+  });
+
+  const subContent = main.querySelector('#sell-subview-content');
+  if (adminState.sellSubView === 'agent') {
+    await drawSellToAgentForm(subContent, main);
+  } else {
+    await drawFactoryRetailForm(subContent, main);
+  }
+}
+
+async function drawSellToAgentForm(subContent, main) {
   try {
     const [agents, products, stock, prices] = await Promise.all([
       apiCall('get_agents'), apiCall('get_products'), apiCall('get_factory_stock'), apiCall('get_prices')
@@ -392,13 +426,7 @@ async function renderAdminSell(main) {
     prices.forEach((p) => { priceMap[p.product_id] = p; });
     const activeAgents = agents.filter((a) => a.status === 'active');
 
-    main.innerHTML = `
-      <div class="page-header">
-        <div>
-          <h1 class="page-title">ຂາຍ/ໂອນສະຕັອກໃຫ້ຕົວແທນ</h1>
-          <div class="page-subtitle">ຕັດສະຕັອກໂຮງງານ ແລະ ບວກເຂົ້າສະຕັອກຕົວແທນອັດຕະໂນມັດ</div>
-        </div>
-      </div>
+    subContent.innerHTML = `
       <div class="card" style="max-width:520px;">
         <form id="sell-form">
           <div class="field">
@@ -427,9 +455,9 @@ async function renderAdminSell(main) {
       </div>
     `;
 
-    const priceHintEl = main.querySelector('#sell-price-hint');
+    const priceHintEl = subContent.querySelector('#sell-price-hint');
     const updatePriceHint = () => {
-      const pid = main.querySelector('#sell-product').value;
+      const pid = subContent.querySelector('#sell-product').value;
       const price = priceMap[pid];
       const wholesale = price ? Number(price.wholesale_price) : 0;
       if (!wholesale) {
@@ -438,10 +466,10 @@ async function renderAdminSell(main) {
         priceHintEl.innerHTML = `<span style="color:var(--color-text-muted);">ລາຄາຂາຍສົ່ງ: <strong>${formatMoney(wholesale)}</strong> / ແພັກ</span>`;
       }
     };
-    main.querySelector('#sell-product').addEventListener('change', updatePriceHint);
+    subContent.querySelector('#sell-product').addEventListener('change', updatePriceHint);
     updatePriceHint();
 
-    main.querySelector('#sell-form').addEventListener('submit', async (e) => {
+    subContent.querySelector('#sell-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const agent_id = document.getElementById('sell-agent').value;
       const product_id = document.getElementById('sell-product').value;
@@ -453,7 +481,84 @@ async function renderAdminSell(main) {
       } catch (err) { showToast(err.message, 'error'); }
     });
   } catch (err) {
-    main.innerHTML = renderErrorCard(err.message);
+    subContent.innerHTML = renderErrorCard(err.message);
+  }
+}
+
+async function drawFactoryRetailForm(subContent, main) {
+  try {
+    const [products, stock, prices] = await Promise.all([
+      apiCall('get_products'), apiCall('get_factory_stock'), apiCall('get_prices')
+    ]);
+    const stockMap = {};
+    stock.forEach((s) => { stockMap[s.product_id] = s; });
+    const priceMap = {};
+    prices.forEach((p) => { priceMap[p.product_id] = p; });
+
+    subContent.innerHTML = `
+      <div class="card" style="max-width:520px;margin-bottom:14px;background:var(--color-primary-light);">
+        <div style="font-size:12.5px;color:var(--color-primary-dark);">
+          💡 ໃຊ້ສຳລັບກໍລະນີມີລູກຄ້າທົ່ວໄປມາຊື້ໜ້າໂຮງງານໂດຍກົງ — ຈະຕັດສະຕັອກໂຮງງານທັນທີ ແລະ ຄິດເປັນລາຄາຂາຍປີກ
+        </div>
+      </div>
+      <div class="card" style="max-width:520px;">
+        <form id="retail-sell-form">
+          <div class="field">
+            <label>ເລືອກສິນຄ້າ</label>
+            <select id="retail-product" required>
+              ${products.map((p) => {
+                const s = stockMap[p.product_id];
+                return `<option value="${p.product_id}">${escapeHtml(p.product_name)} (ຄົງເຫຼືອ ${s ? formatNumber(s.quantity) : 0})</option>`;
+              }).join('')}
+            </select>
+          </div>
+          <div id="retail-price-hint" style="font-size:12.5px;margin-bottom:12px;"></div>
+          <div class="field">
+            <label>ຈຳນວນ</label>
+            <input type="number" id="retail-qty" min="1" value="1" required>
+          </div>
+          <div class="total-preview" style="margin-bottom:14px;">
+            <div class="label">ຍອດລວມທີ່ຕ້ອງເກັບ</div>
+            <div class="value" id="retail-total-preview">0 ₭</div>
+          </div>
+          <button class="btn btn-success btn-block" type="submit">✅ ຢືນຢັນການຂາຍປີກ</button>
+        </form>
+      </div>
+    `;
+
+    const priceHintEl = subContent.querySelector('#retail-price-hint');
+    const totalPreviewEl = subContent.querySelector('#retail-total-preview');
+    const productSelect = subContent.querySelector('#retail-product');
+    const qtyInput = subContent.querySelector('#retail-qty');
+
+    const updatePreview = () => {
+      const pid = productSelect.value;
+      const price = priceMap[pid];
+      const retail = price ? Number(price.retail_price) : 0;
+      const qty = Number(qtyInput.value) || 0;
+      if (!retail) {
+        priceHintEl.innerHTML = `<span style="color:var(--color-danger);font-weight:600;">⚠️ ສິນຄ້ານີ້ຍັງບໍ່ໄດ້ຕັ້ງລາຄາຂາຍປີກ — ໄປຕັ້ງລາຄາກ່ອນທີ່ໜ້າ "ຕັ້ງລາຄາ"</span>`;
+      } else {
+        priceHintEl.innerHTML = `<span style="color:var(--color-text-muted);">ລາຄາຂາຍປີກ: <strong>${formatMoney(retail)}</strong> / ແພັກ</span>`;
+      }
+      totalPreviewEl.textContent = formatMoney(retail * qty);
+    };
+    productSelect.addEventListener('change', updatePreview);
+    qtyInput.addEventListener('input', updatePreview);
+    updatePreview();
+
+    subContent.querySelector('#retail-sell-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const product_id = productSelect.value;
+      const qty = qtyInput.value;
+      try {
+        const res = await apiCall('factory_retail_sale', { product_id, qty });
+        showToast(`ຂາຍປີກສຳເລັດ, ຍອດລວມ ${formatMoney(res.total_amount)}`, 'success');
+        renderAdminSell(main);
+      } catch (err) { showToast(err.message, 'error'); }
+    });
+  } catch (err) {
+    subContent.innerHTML = renderErrorCard(err.message);
   }
 }
 
@@ -579,11 +684,13 @@ function openPurchaseRequestModal(pr, main) {
 
         ${isRejected
           ? `<div class="error-box" style="margin-top:16px;">ຄຳສັ່ງຊື້ນີ້ຖືກປະຕິເສດແລ້ວ</div>`
-          : `<div class="status-stepper">
+          : `<div style="font-size:12px;color:var(--color-text-muted);margin-top:16px;">👇 ກົດເລືອກສະຖານະໄດ້ໂດຍກົງ</div>
+            <div class="status-stepper">
               ${PR_FLOW_STEPS.map((s, idx) => `
-                <div class="status-step ${idx < currentIdx ? 'done' : idx === currentIdx ? 'current' : ''}">${escapeHtml(s.label)}</div>
+                <button class="status-step-btn status-step ${idx < currentIdx ? 'done' : idx === currentIdx ? 'current' : ''}" data-status="${s.key}" style="border:none;background:none;cursor:pointer;">${escapeHtml(s.label)}</button>
               `).join('')}
-            </div>`
+            </div>
+            ${pr.stock_fulfilled ? '<div style="font-size:12px;color:var(--color-success);font-weight:700;margin-top:-6px;margin-bottom:10px;">✅ ໂອນສະຕັອກເຂົ້າບັນຊີຕົວແທນແລ້ວ</div>' : ''}`
         }
 
         <div class="field">
@@ -592,9 +699,6 @@ function openPurchaseRequestModal(pr, main) {
         </div>
 
         <div class="status-flow-actions">
-          ${!isRejected && currentIdx < PR_FLOW_STEPS.length - 1
-            ? `<button class="btn btn-primary" id="pr-advance-btn">✅ ອັບເດດເປັນ: ${escapeHtml(PR_FLOW_STEPS[currentIdx + 1].label)}</button>`
-            : ''}
           ${pr.status === 'pending' ? `<button class="btn btn-danger" id="pr-reject-btn">❌ ປະຕິເສດຄຳສັ່ງຊື້</button>` : ''}
           <button class="btn btn-outline" id="pr-close-btn">ປິດ</button>
         </div>
@@ -605,19 +709,19 @@ function openPurchaseRequestModal(pr, main) {
 
   overlay.querySelector('#pr-close-btn').addEventListener('click', () => overlay.remove());
 
-  const advanceBtn = overlay.querySelector('#pr-advance-btn');
-  if (advanceBtn) {
-    advanceBtn.addEventListener('click', async () => {
-      const nextStatus = PR_FLOW_STEPS[currentIdx + 1].key;
+  overlay.querySelectorAll('.status-step-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const targetStatus = btn.dataset.status;
+      if (targetStatus === pr.status) return; // ຄືເກົ່າ ບໍ່ຕ້ອງເຮັດຫຍັງ
       const adminNote = overlay.querySelector('#pr-admin-note').value.trim();
       try {
-        await apiCall('update_purchase_request_status', { request_id: pr.request_id, status: nextStatus, admin_note: adminNote });
-        showToast('ອັບເດດສະຖານະສຳເລັດ', 'success');
+        await apiCall('update_purchase_request_status', { request_id: pr.request_id, status: targetStatus, admin_note: adminNote });
+        showToast('ອັບເດດສະຖານະສຳເລັດ' + (targetStatus === 'delivered' ? ' (ໂອນສະຕັອກໃຫ້ຕົວແທນແລ້ວ)' : ''), 'success');
         overlay.remove();
         renderAdminPurchaseRequests(main);
       } catch (err) { showToast(err.message, 'error'); }
     });
-  }
+  });
 
   const rejectBtn = overlay.querySelector('#pr-reject-btn');
   if (rejectBtn) {
@@ -970,6 +1074,8 @@ async function renderAdminReports(main) {
           escapeHtml(t.timestamp),
           t.type === 'factory_to_agent'
             ? '<span class="badge badge-warning">ໂຮງງານ→ຕົວແທນ</span>'
+            : t.type === 'factory_retail_sale'
+            ? '<span class="badge badge-success">ຂາຍປີກ (ໜ້າຮ້ານ)</span>'
             : '<span class="badge badge-success">ຕົວແທນ→ລູກຄ້າ</span>',
           escapeHtml(t.agent_name),
           escapeHtml(t.product_name),
