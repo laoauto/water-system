@@ -232,6 +232,22 @@ async function renderAdminDashboard(main) {
         </div>
       </div>
 
+      <div class="section-title">🏪 ຍອດຂາຍລາຍຕົວແທນ (${data.agent_breakdown.length})</div>
+      ${data.agent_breakdown.length === 0
+        ? '<div class="card"><div class="empty-state"><div class="icon">👥</div>ຍັງບໍ່ມີຕົວແທນໃນລະບົບ</div></div>'
+        : renderTable(
+            ['ຕົວແທນ', 'ສະຖານະ', 'ຍອດມື້ນີ້', 'ຍອດ 7 ວັນ', 'ຍອດ 30 ວັນ', 'ສະຕັອກທີ່ຖືຢູ່'],
+            data.agent_breakdown.map((a) => [
+              escapeHtml(a.agent_name),
+              a.status === 'active' ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-danger">Disabled</span>',
+              formatMoney(a.sales_today),
+              formatMoney(a.sales_week),
+              formatMoney(a.sales_month),
+              formatNumber(a.stock_units) + ' ແພັກ'
+            ])
+          )
+      }
+
       <div class="section-title">⚠️ ສິນຄ້າໃກ້ໝົດ (${data.low_stock_alerts.length})</div>
       ${data.low_stock_alerts.length === 0
         ? '<div class="card"><div class="empty-state"><div class="icon">✅</div>ບໍ່ມີສິນຄ້າໃກ້ໝົດໃນຂະນະນີ້</div></div>'
@@ -859,7 +875,7 @@ const AGENT_NAV = [
 
 let agentState = {
   view: 'dashboard', selectedProduct: null, qty: 1, prices: [], stock: [],
-  historyFrom: null, historyTo: null
+  historyFrom: null, historyTo: null, stockSubView: 'stock'
 };
 
 function formatDateInput(d) {
@@ -1023,25 +1039,101 @@ async function renderAgentDashboard(content) {
 }
 
 async function renderAgentMyStock(content) {
+  content.innerHTML = `
+    <div class="agent-page-title">ສະຕັອກ &amp; ລາຄາຂາຍ</div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <button class="btn btn-sm ${agentState.stockSubView === 'stock' ? 'btn-primary' : 'btn-outline'}" id="tab-stock-btn" style="flex:1;">📦 ສະຕັອກ</button>
+      <button class="btn btn-sm ${agentState.stockSubView === 'prices' ? 'btn-primary' : 'btn-outline'}" id="tab-prices-btn" style="flex:1;">💲 ຕັ້ງລາຄາຂາຍ</button>
+    </div>
+    <div id="stock-subview-content"><div class="spinner"></div></div>
+  `;
+
+  content.querySelector('#tab-stock-btn').addEventListener('click', () => {
+    agentState.stockSubView = 'stock';
+    renderAgentMyStock(content);
+  });
+  content.querySelector('#tab-prices-btn').addEventListener('click', () => {
+    agentState.stockSubView = 'prices';
+    renderAgentMyStock(content);
+  });
+
+  const subContent = content.querySelector('#stock-subview-content');
+  if (agentState.stockSubView === 'stock') {
+    await drawAgentStockList(subContent);
+  } else {
+    await drawAgentPriceEditor(subContent);
+  }
+}
+
+async function drawAgentStockList(subContent) {
   try {
     const stock = await apiCall('get_my_stock');
-    content.innerHTML = `
-      <div class="agent-page-title">ສະຕັອກທີ່ຂ້ອຍຖືຢູ່</div>
-      ${stock.length === 0
-        ? '<div class="empty-state"><div class="icon">📦</div>ຍັງບໍ່ມີສະຕັອກ, ລໍຖ້າໂຮງງານໂອນສິນຄ້າໃຫ້ທ່ານ</div>'
-        : stock.map((s) => `
-          <div class="stock-item-card">
-            <div>
-              <div class="stock-item-name">${escapeHtml(s.product_name)}</div>
-              <div class="stock-item-unit">${escapeHtml(s.unit)} • ອັບເດດ ${escapeHtml(s.last_updated)}</div>
-            </div>
-            <div class="stock-item-qty">${formatNumber(s.quantity)}</div>
+    subContent.innerHTML = stock.length === 0
+      ? '<div class="empty-state"><div class="icon">📦</div>ຍັງບໍ່ມີສະຕັອກ, ລໍຖ້າໂຮງງານໂອນສິນຄ້າໃຫ້ທ່ານ</div>'
+      : stock.map((s) => `
+        <div class="stock-item-card">
+          <div>
+            <div class="stock-item-name">${escapeHtml(s.product_name)}</div>
+            <div class="stock-item-unit">${escapeHtml(s.unit)} • ອັບເດດ ${escapeHtml(s.last_updated)}</div>
           </div>
-        `).join('')
-      }
-    `;
+          <div class="stock-item-qty">${formatNumber(s.quantity)}</div>
+        </div>
+      `).join('');
   } catch (err) {
-    content.innerHTML = renderErrorCard(err.message);
+    subContent.innerHTML = renderErrorCard(err.message);
+  }
+}
+
+async function drawAgentPriceEditor(subContent) {
+  try {
+    const prices = await apiCall('get_my_prices');
+    subContent.innerHTML = `
+      <div class="card" style="margin-bottom:12px;background:var(--color-primary-light);">
+        <div style="font-size:12.5px;color:var(--color-primary-dark);">
+          💡 ຕັ້ງລາຄາຂາຍຂອງທ່ານເອງໄດ້ຕໍ່ສິນຄ້າ. ຖ້າບໍ່ຕັ້ງ ຈະໃຊ້ລາຄາມາດຕະຖານທີ່ໂຮງງານກຳນົດແທນ.
+        </div>
+      </div>
+      ${prices.map((p) => `
+        <div class="stock-item-card" style="flex-wrap:wrap;gap:10px;">
+          <div style="flex:1;min-width:140px;">
+            <div class="stock-item-name">${escapeHtml(p.product_name)}</div>
+            <div class="stock-item-unit">
+              ລາຄາມາດຕະຖານ: ${formatMoney(p.base_retail_price)}
+              ${p.is_custom ? ' • <span style="color:var(--color-primary);font-weight:700;">ຕັ້ງເອງ</span>' : ''}
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input type="number" class="my-price-input" data-id="${p.product_id}" value="${p.retail_price}" style="width:100px;padding:8px 10px;border:1.5px solid var(--color-border);border-radius:8px;">
+            <button class="btn btn-sm btn-primary save-my-price-btn" data-id="${p.product_id}">ບັນທຶກ</button>
+            ${p.is_custom ? `<button class="btn btn-sm btn-outline reset-my-price-btn" data-id="${p.product_id}">↺</button>` : ''}
+          </div>
+        </div>
+      `).join('')}
+    `;
+
+    subContent.querySelectorAll('.save-my-price-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        const price = subContent.querySelector(`.my-price-input[data-id="${id}"]`).value;
+        try {
+          await apiCall('update_my_price', { product_id: id, price });
+          showToast('ບັນທຶກລາຄາຂາຍສຳເລັດ', 'success');
+          drawAgentPriceEditor(subContent);
+        } catch (err) { showToast(err.message, 'error'); }
+      });
+    });
+
+    subContent.querySelectorAll('.reset-my-price-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        try {
+          await apiCall('reset_my_price', { product_id: btn.dataset.id });
+          showToast('ກັບໄປໃຊ້ລາຄາມາດຕະຖານແລ້ວ', 'success');
+          drawAgentPriceEditor(subContent);
+        } catch (err) { showToast(err.message, 'error'); }
+      });
+    });
+  } catch (err) {
+    subContent.innerHTML = renderErrorCard(err.message);
   }
 }
 
@@ -1160,7 +1252,7 @@ function drawOrderRows(content) {
 
 async function renderAgentQuickSale(content) {
   try {
-    const [stock, prices] = await Promise.all([apiCall('get_my_stock'), apiCall('get_prices')]);
+    const [stock, prices] = await Promise.all([apiCall('get_my_stock'), apiCall('get_my_prices')]);
     agentState.stock = stock;
     agentState.prices = prices;
     if (!agentState.selectedProduct && stock.length > 0) agentState.selectedProduct = stock[0].product_id;
