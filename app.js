@@ -419,7 +419,7 @@ async function renderAdminSell(main) {
       if (!wholesale) {
         priceHintEl.innerHTML = `<span style="color:var(--color-danger);font-weight:600;">⚠️ ສິນຄ້ານີ້ຍັງບໍ່ໄດ້ຕັ້ງລາຄາຂາຍສົ່ງ (ຈະຄິດເປັນ 0 ກີບ) — ໄປຕັ້ງລາຄາກ່ອນທີ່ໜ້າ "ຕັ້ງລາຄາ"</span>`;
       } else {
-        priceHintEl.innerHTML = `<span style="color:var(--color-text-muted);">ລາຄາຂາຍສົ່ງ: <strong>${formatMoney(wholesale)}</strong> / ໜ່ວຍ</span>`;
+        priceHintEl.innerHTML = `<span style="color:var(--color-text-muted);">ລາຄາຂາຍສົ່ງ: <strong>${formatMoney(wholesale)}</strong> / ແພັກ</span>`;
       }
     };
     main.querySelector('#sell-product').addEventListener('change', updatePriceHint);
@@ -828,7 +828,7 @@ async function renderAdminReports(main) {
         </div>
       </div>
       ${renderTable(
-        ['ວັນທີ-ເວລາ', 'ປະເພດ', 'ຕົວແທນ', 'ສິນຄ້າ', 'ຈຳນວນ', 'ລາຄາ/ໜ່ວຍ', 'ຍອດລວມ'],
+        ['ວັນທີ-ເວລາ', 'ປະເພດ', 'ຕົວແທນ', 'ສິນຄ້າ', 'ຈຳນວນ', 'ລາຄາ/ແພັກ', 'ຍອດລວມ'],
         txs.map((t) => [
           escapeHtml(t.timestamp),
           t.type === 'factory_to_agent'
@@ -997,7 +997,7 @@ async function renderAgentDashboard(content) {
         <div>
           <div style="font-size:12.5px;color:var(--color-text-muted);font-weight:600;">ສິນຄ້າທີ່ຖືຢູ່</div>
           <div style="font-size:19px;font-weight:800;color:var(--color-primary-dark);margin-top:2px;">
-            ${data.total_products} ລາຍການ • ${formatNumber(data.total_units)} ໜ່ວຍ
+            ${data.total_products} ລາຍການ • ${formatNumber(data.total_units)} ແພັກ
           </div>
         </div>
         <div style="font-size:32px;">📦</div>
@@ -1336,7 +1336,7 @@ async function loadAgentHistoryList(content) {
 
     summaryEl.innerHTML = `
       <div class="total-preview" style="margin-bottom:14px;">
-        <div class="label">ຍອດຂາຍລວມໃນຊ່ວງທີ່ເລືອກ (${salesOnly.length} ລາຍການ, ${formatNumber(totalQty)} ໜ່ວຍ)</div>
+        <div class="label">ຍອດຂາຍລວມໃນຊ່ວງທີ່ເລືອກ (${salesOnly.length} ລາຍການ, ${formatNumber(totalQty)} ແພັກ)</div>
         <div class="value">${formatMoney(totalAmount)}</div>
       </div>
     `;
