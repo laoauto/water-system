@@ -717,6 +717,8 @@ async function renderAdminAgents(main) {
                     ${a.status === 'active' ? 'ປິດການໃຊ້ງານ' : 'ເປີດການໃຊ້ງານ'}
                   </button>
                   <button class="btn btn-sm btn-outline reset-pw-btn" data-id="${a.user_id}">Reset Password</button>
+                  <button class="btn btn-sm btn-primary view-detail-btn" data-id="${a.user_id}">📋 ລາຍລະອຽດ/ປະຫວັດ</button>
+                  <button class="btn btn-sm btn-danger delete-agent-btn" data-id="${a.user_id}">🗑️ ລົບ</button>
                 </td>
               </tr>
             `).join('')}
@@ -753,6 +755,20 @@ async function renderAdminAgents(main) {
       btn.addEventListener('click', () => openResetPasswordModal(btn.dataset.id, main));
     });
 
+    main.querySelectorAll('.view-detail-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const agent = agents.find((a) => a.user_id === btn.dataset.id);
+        openAgentDetailModal(agent, main);
+      });
+    });
+
+    main.querySelectorAll('.delete-agent-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const agent = agents.find((a) => a.user_id === btn.dataset.id);
+        openDeleteAgentModal(agent, main);
+      });
+    });
+
   } catch (err) {
     main.innerHTML = renderErrorCard(err.message);
   }
@@ -782,6 +798,111 @@ function openResetPasswordModal(userId, main) {
     try {
       await apiCall('reset_agent_password', { user_id: userId, new_password: newPassword });
       showToast('Reset Password ສຳເລັດ', 'success');
+      overlay.remove();
+      renderAdminAgents(main);
+    } catch (err) { showToast(err.message, 'error'); }
+  });
+}
+
+async function openAgentDetailModal(agent, main) {
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box" style="max-width:640px;max-height:85vh;overflow-y:auto;">
+        <div class="modal-title">📋 ລາຍລະອຽດຕົວແທນ: ${escapeHtml(agent.agent_name)}</div>
+
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--color-text-muted);">ແກ້ໄຂຂໍ້ມູນ</div>
+        <div class="form-row">
+          <div class="field"><label>ຊື່ຕົວແທນ / ຊື່ຮ້ານ</label><input type="text" id="edit-agent-name" value="${escapeHtml(agent.agent_name)}"></div>
+          <div class="field"><label>ເບີໂທ</label><input type="text" id="edit-agent-phone" value="${escapeHtml(agent.phone || '')}"></div>
+        </div>
+        <div class="field" style="margin-top:10px;"><label>Username</label><input type="text" id="edit-agent-username" value="${escapeHtml(agent.username)}"></div>
+        <button class="btn btn-primary btn-sm" id="save-agent-info-btn" style="margin-top:8px;">💾 ບັນທຶກການແກ້ໄຂ</button>
+
+        <div class="section-title" style="margin-top:22px;">📦 ສະຕັອກປັດຈຸບັນ</div>
+        <div id="agent-detail-stock"><div class="spinner"></div></div>
+
+        <div class="section-title">🧾 ປະຫວັດການຂາຍທັງໝົດ</div>
+        <div id="agent-detail-history"><div class="spinner"></div></div>
+
+        <div class="modal-actions">
+          <button class="btn btn-outline btn-block" id="detail-close-btn">ປິດ</button>
+        </div>
+      </div>
+    </div>
+  `);
+  document.body.appendChild(overlay);
+  overlay.querySelector('#detail-close-btn').addEventListener('click', () => overlay.remove());
+
+  overlay.querySelector('#save-agent-info-btn').addEventListener('click', async () => {
+    const agent_name = overlay.querySelector('#edit-agent-name').value.trim();
+    const phone = overlay.querySelector('#edit-agent-phone').value.trim();
+    const username = overlay.querySelector('#edit-agent-username').value.trim();
+    if (!agent_name || !username) { showToast('ກະລຸນາໃສ່ຊື່ ແລະ Username', 'error'); return; }
+    try {
+      await apiCall('update_agent_info', { user_id: agent.user_id, agent_name, phone, username });
+      showToast('ບັນທຶກການແກ້ໄຂສຳເລັດ', 'success');
+      overlay.remove();
+      renderAdminAgents(main);
+    } catch (err) { showToast(err.message, 'error'); }
+  });
+
+  const stockEl = overlay.querySelector('#agent-detail-stock');
+  const historyEl = overlay.querySelector('#agent-detail-history');
+
+  try {
+    const stock = await apiCall('get_agent_stock', { agent_id: agent.user_id });
+    stockEl.innerHTML = stock.length === 0
+      ? '<div class="empty-state">ຍັງບໍ່ມີສະຕັອກ</div>'
+      : renderTable(
+          ['ສິນຄ້າ', 'ຫົວໜ່ວຍ', 'ຄົງເຫຼືອ', 'ອັບເດດລ່າສຸດ'],
+          stock.map((s) => [escapeHtml(s.product_name), escapeHtml(s.unit), formatNumber(s.quantity), escapeHtml(s.last_updated)])
+        );
+  } catch (err) {
+    stockEl.innerHTML = renderErrorCard(err.message);
+  }
+
+  try {
+    const txs = await apiCall('get_agent_transactions', { agent_id: agent.user_id });
+    historyEl.innerHTML = txs.length === 0
+      ? '<div class="empty-state">ຍັງບໍ່ມີປະຫວັດການຂາຍ</div>'
+      : renderTable(
+          ['ວັນທີ-ເວລາ', 'ປະເພດ', 'ສິນຄ້າ', 'ຈຳນວນ', 'ລາຄາ/ແພັກ', 'ຍອດລວມ'],
+          txs.map((t) => [
+            escapeHtml(t.timestamp),
+            t.type === 'factory_to_agent' ? '<span class="badge badge-warning">ຮັບເຂົ້າ</span>' : '<span class="badge badge-success">ຂາຍອອກ</span>',
+            escapeHtml(t.product_name),
+            formatNumber(t.quantity),
+            formatMoney(t.unit_price),
+            formatMoney(t.total_amount)
+          ])
+        );
+  } catch (err) {
+    historyEl.innerHTML = renderErrorCard(err.message);
+  }
+}
+
+function openDeleteAgentModal(agent, main) {
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box">
+        <div class="modal-title">🗑️ ລົບບັນຊີຕົວແທນ</div>
+        <div class="error-box">
+          ທ່ານກຳລັງຈະລົບບັນຊີ "${escapeHtml(agent.agent_name)}" (${escapeHtml(agent.username)}) ຖາວອນ.
+          ຕົວແທນຈະ Login ບໍ່ໄດ້ອີກຕໍ່ໄປ. ປະຫວັດການຂາຍເກົ່າຈະຍັງເກັບໄວ້ໃນລະບົບ ແຕ່ຈະບໍ່ສະແດງຊື່ຕົວແທນ.
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-outline" id="delete-cancel">ຍົກເລີກ</button>
+          <button class="btn btn-danger" id="delete-confirm">ຢືນຢັນລົບ</button>
+        </div>
+      </div>
+    </div>
+  `);
+  document.body.appendChild(overlay);
+  overlay.querySelector('#delete-cancel').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#delete-confirm').addEventListener('click', async () => {
+    try {
+      await apiCall('delete_agent', { user_id: agent.user_id });
+      showToast('ລົບບັນຊີຕົວແທນສຳເລັດ', 'success');
       overlay.remove();
       renderAdminAgents(main);
     } catch (err) { showToast(err.message, 'error'); }
