@@ -761,3 +761,13 @@ tbody tr:hover { background: #FAFCFD; }
   align-items: flex-end;
   flex-wrap: wrap;
 }
+
+.status-step-btn {
+  font-family: var(--font-body);
+}
+.status-step-btn:hover {
+  color: var(--color-primary);
+}
+.status-step-btn:hover::before {
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
